@@ -34,17 +34,14 @@ class NodeInterpreter:
         node_ids = {}
         with open(filename, "r") as file:
             for line in file:
-                match = re.match(
-                    r"(\d+): kind=(\w+), named=(\w+), hidden=(\w+), visible=(\w+)", line
-                )
-                if match:
-                    id, kind, named, hidden, visible = match.groups()
-                    node_ids[int(id)] = NodeInfo(
-                        int(id),
-                        kind,
-                        named == "true",
-                        hidden == "true",
-                        visible == "true",
+                parsed_line = parse_line(line.strip())
+                if parsed_line:
+                    node_ids[parsed_line['index']] = NodeInfo(
+                        parsed_line['index'],
+                        parsed_line['kind'],
+                        parsed_line['named'],
+                        parsed_line['hidden'],
+                        parsed_line['visible']
                     )
         return node_ids
 
@@ -117,6 +114,23 @@ class NodeInterpreter:
 
         return interpretation
 
+    
+
+def parse_line(line):
+    pattern = re.compile(
+        r"(?P<index>\d+):\s*kind=(?P<kind>[^,]+),\s*named=(?P<named>\w+),\s*hidden=(?P<hidden>\w+),\s*visible=(?P<visible>\w+)"
+    )
+    match = pattern.match(line)
+    if match:
+        return {
+            "index": int(match.group("index")),
+            "kind": match.group("kind"),
+            "named": match.group("named") == "true",
+            "hidden": match.group("hidden") == "true",
+            "visible": match.group("visible") == "visible",
+        }
+    else:
+        return None
 
 # Usage
 interpreter = NodeInterpreter("python.txt", "python-nodes.md", "python-grammar.md")
