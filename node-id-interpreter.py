@@ -34,14 +34,14 @@ class NodeInterpreter:
         node_ids = {}
         with open(filename, "r") as file:
             for line in file:
-                parsed_line = parse_line(line.strip())
+                parsed_line = self._parse_line(line.strip())
                 if parsed_line:
-                    node_ids[parsed_line['index']] = NodeInfo(
-                        parsed_line['index'],
-                        parsed_line['kind'],
-                        parsed_line['named'],
-                        parsed_line['hidden'],
-                        parsed_line['visible']
+                    node_ids[parsed_line["index"]] = NodeInfo(
+                        parsed_line["index"],
+                        parsed_line["kind"],
+                        parsed_line["named"],
+                        parsed_line["hidden"],
+                        parsed_line["visible"],
                     )
         return node_ids
 
@@ -50,10 +50,12 @@ class NodeInterpreter:
         current_type = None
         with open(filename, "r") as file:
             for line in file:
+                line = line.strip()
                 if line.startswith("## "):
                     if current_type:
                         node_types[current_type.type_name] = current_type
-                    current_type = NodeType(line.strip("## ").strip(), {}, [])
+                    type_name = re.sub(r"^\d+\)\s*", "", line[3:].strip())
+                    current_type = NodeType(type_name, {}, [])
                 elif 'type="FIELD"' in line and current_type:
                     field_match = re.search(r'name="(\w+)".*content=(\w+)', line)
                     if field_match:
@@ -69,14 +71,23 @@ class NodeInterpreter:
     def _parse_grammar(self, filename: str) -> Dict[str, GrammarRule]:
         grammar_rules = {}
         current_rule = None
+        in_rules_section = False
         with open(filename, "r") as file:
             for line in file:
-                if line.startswith("### "):
-                    if current_rule:
-                        grammar_rules[current_rule.name] = current_rule
-                    current_rule = GrammarRule(line.strip("### ").strip(), "")
-                elif current_rule and line.strip():
-                    current_rule.content += line
+                line = line.strip()
+                if line.startswith("## Rules"):
+                    in_rules_section = True
+                elif line.startswith("##") and in_rules_section:
+                    if not line.startswith("###"):
+                        break  # Exit when a new section starts after the Rules section
+                if in_rules_section:
+                    if line.startswith("### "):
+                        if current_rule:
+                            grammar_rules[current_rule.name] = current_rule
+                        rule_name = re.sub(r"^\d+\)\s*", "", line[4:].strip())
+                        current_rule = GrammarRule(rule_name, "")
+                    elif current_rule and line:
+                        current_rule.content += line + "\n"
         if current_rule:
             grammar_rules[current_rule.name] = current_rule
         return grammar_rules
@@ -87,14 +98,14 @@ class NodeInterpreter:
             return None
 
         interpretation = f"Node ID: {node_id}\n"
-        interpretation += f"Kind: {node_info.kind}\n"
-        interpretation += f"Named: {node_info.named}\n"
-        interpretation += f"Hidden: {node_info.hidden}\n"
-        interpretation += f"Visible: {node_info.visible}\n\n"
+        interpretation += f' - Kind: "{node_info.kind}", '
+        interpretation += f"Named: {node_info.named}, "
+        interpretation += f"Hidden: {node_info.hidden}, "
+        interpretation += f"Visible: {node_info.visible}\n"
 
         node_type = self.node_types.get(node_info.kind)
         if node_type:
-            interpretation += f"Node Type: {node_type.type_name}\n"
+            interpretation += f' - Type: "{node_type.type_name}"\n'
             if node_type.fields:
                 interpretation += "Fields:\n"
                 for field, content in node_type.fields.items():
@@ -104,33 +115,33 @@ class NodeInterpreter:
                 for subtype in node_type.subtypes:
                     interpretation += f"  - {subtype}\n"
         else:
-            interpretation += "No corresponding node type found.\n"
+            interpretation += " - Type: not found\n"
 
         grammar_rule = self.grammar_rules.get(node_info.kind)
         if grammar_rule:
-            interpretation += f"\nGrammar Rule:\n{grammar_rule.content}\n"
+            interpretation += f" - Rule:\n\n{grammar_rule.content}"
         else:
-            interpretation += "\nNo corresponding grammar rule found.\n"
+            interpretation += " - Rule: not found.\n"
 
         return interpretation
 
-    
+    @staticmethod
+    def _parse_line(line: str):
+        pattern = re.compile(
+            r"(?P<index>\d+):\s*kind=(?P<kind>[^,]+),\s*named=(?P<named>\w+),\s*hidden=(?P<hidden>\w+),\s*visible=(?P<visible>\w+)"
+        )
+        match = pattern.match(line)
+        if match:
+            return {
+                "index": int(match.group("index")),
+                "kind": match.group("kind"),
+                "named": match.group("named") == "true",
+                "hidden": match.group("hidden") == "true",
+                "visible": match.group("visible") == "visible",
+            }
+        else:
+            return None
 
-def parse_line(line):
-    pattern = re.compile(
-        r"(?P<index>\d+):\s*kind=(?P<kind>[^,]+),\s*named=(?P<named>\w+),\s*hidden=(?P<hidden>\w+),\s*visible=(?P<visible>\w+)"
-    )
-    match = pattern.match(line)
-    if match:
-        return {
-            "index": int(match.group("index")),
-            "kind": match.group("kind"),
-            "named": match.group("named") == "true",
-            "hidden": match.group("hidden") == "true",
-            "visible": match.group("visible") == "visible",
-        }
-    else:
-        return None
 
 # Usage
 interpreter = NodeInterpreter("python.txt", "python-nodes.md", "python-grammar.md")
@@ -138,4 +149,7 @@ interpreter = NodeInterpreter("python.txt", "python-nodes.md", "python-grammar.m
 # Example usage
 for node_id in range(274):
     result = interpreter.interpret_node_id(node_id)
-    print(result if result else f"No information found for node ID {node_id}")
+    if result:
+        print(result)
+    else:
+        print(f"No information found for node ID {node_id}")
